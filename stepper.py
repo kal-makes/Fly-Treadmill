@@ -2,12 +2,42 @@
 import RPi.GPIO as GPIO
 import time  
 import _thread as thread
+import threading
 #============= a4988 CLASS ================
 timer_done = False
+t_delay=0
+motor_status = False
+
+def timerDone():
+    global timer_done
+    print("Timer Done")
+    timer_done = True
+    print("KILLED")
+
+def time_converter(specific_time, duration):
+    if(specific_time==1):
+        duration = duration*3600
+    if(specific_time==2):
+        duration=duration*60
+    if(specific_time==3):
+        duration = duration
+    else:
+        print("ERROR: INCORRECT TIME VALUE")
+    return duration
+
+def countdown_timer(specificTime, duration):
+    seconds = time_converter(specificTime, duration)
+    timer = threading.Timer(seconds, timerDone)
+    timer.start()
+    print(timer)
+   
+        
+
 class stepperMotor:
-    def __init__(self, resolution_pins, direction_pin, step_pin):
+    def __init__(self, resolution_pins, direction_pin, step_pin, reset_pin):
         self.direction_pin = direction_pin
         self.step_pin = step_pin
+        self.reset_pin = reset_pin
 
         if resolution_pins[0] != -1:
             self.resolution_pins = resolution_pins
@@ -21,6 +51,7 @@ class stepperMotor:
         GPIO.setup(self.resolution_pins, GPIO.OUT)
         GPIO.setup(self.direction_pin, GPIO.OUT)
         GPIO.setup(self.step_pin, GPIO.OUT)
+        GPIO.setup(self.reset_pin, GPIO.OUT)
 
     def resolution_set(self, steptype):
         resolution = {'Full': (0, 0, 0),
@@ -35,56 +66,70 @@ class stepperMotor:
         else:
             print("RESOLUTION OFF")
 
+    def stepper_speed(self, v):
+        global t_delay
+        a = 0.0003125
+        b= 60
+        fz = v/(a*b)
+        t_delay = 1/fz
+        
     def run_forever(self):
-        GPIO.output(self.direction_pin, 1)
-        while 1:
-            GPIO.output(self.step_pin, True)
-            time.sleep(0.002)
-            GPIO.output(self.step_pin, False)
-            time.sleep(0.002) 
-
-    def run_timed(self):
-        global timer_done
         GPIO.output(self.direction_pin, 1)
         while timer_done == False:
             GPIO.output(self.step_pin, True)
-            time.sleep(0.002)
+            time.sleep(0.0125)
             GPIO.output(self.step_pin, False)
-            time.sleep(0.002) 
+            time.sleep(0.0125) 
 
-    def run_countdown(self):
+    def run_timed(self,specificTime, duration):
         global timer_done
-        t = int(input("Enter hour(s)"))
-        t = t #*3600 #uncomment when wanting to convert back to hours
-        start_time = time.time()
+        GPIO.output(self.direction_pin, 1)
+        GPIO.output(self.reset_pin, GPIO.HIGH)
+        countdown_timer(specificTime, duration)
+        print("motor active")
+        motor_status = True
+        while timer_done == False:
+            GPIO.output(self.step_pin, True)
+            time.sleep(t_delay)
+            GPIO.output(self.step_pin, False)
+            time.sleep(t_delay) 
+        GPIO.output(self.reset_pin, GPIO.LOW)
         timer_done = False
-        while t:
-            # Divmod takes only two arguments so
-            # you'll need to do this for each time
-            # unit you need to add
-            mins, secs = divmod(t, 60) 
-            hours, mins = divmod(mins, 60)
-            days, hours = divmod(hours, 24)
-            timer = '{:02d}:{:02d}:{:02d}:{:02d}'.format(days, hours, mins, secs) 
-            print(timer, end="\r" )
-            time_before_sleep = time.time() - start_time
-            time.sleep(1) 
-            time_after_sleep = time.time() - start_time
-            print(timer, time_before_sleep, time_after_sleep)
-            t -= 1
-        timer_done = True
-        #return timer
+        motor_status = False
+        print("motor not running")
+    
+    def stopMotor(self):
+        GPIO.output(self.reset_pin, GPIO.LOW)
+    def status(self):
+        global motor_status
+        if motor_status == True:
+            return 1
+        else:
+            return 0
+    def test_thread(self, t):
+        global timer_done
+        GPIO.output(self.direction_pin, 1)
+        countdown_timer(t)
+        
+    def check_status(self):
+        global timer_done
+        if True:
+            print("HIGH")
+            time.sleep(0.002)
+            print("LOW")
+            time.sleep(0.002) 
+        timer_done = False
 
-                   
-GPIOPINS = (14, 15, 18)
-testMotor = stepperMotor(GPIOPINS, 20, 21)
-testMotor.resolution_set('1/8')
 
-def countdown():
-    thread.start_new_thread(testMotor.run_countdown, ())
-    thread.start_new_thread(testMotor.run_timed, ())
-    while 1:
-        pass
+
+
+
+
+
+
+
+
+
 
 
 
